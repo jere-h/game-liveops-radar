@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live-ops Deconfliction Checker</title>
+  <meta name="description" content="Client-side tool to flag overlapping live-ops initiatives that share enrolled players." />
+  <!-- CSV parsing is self-contained in js/core.js — no runtime CDN dependency. -->
+  <!-- Stylesheet (relative path for GitHub Pages) -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Live-ops Deconfliction Checker</h1>
+    <p class="tagline">
+      Upload your event calendar and assignment log to flag overlapping
+      initiatives that hit the same players. Everything runs in your browser —
+      nothing is uploaded to a server.
+    </p>
+  </header>
+
+  <main class="app-main">
+    <!-- ============ Inputs ============ -->
+    <section class="panel inputs-panel" aria-labelledby="inputs-heading">
+      <h2 id="inputs-heading">1. Load your data</h2>
+
+      <div class="input-grid">
+        <div class="input-field">
+          <label for="calendar-input">Calendar CSV</label>
+          <input
+            type="file"
+            id="calendar-input"
+            accept=".csv,text/csv"
+            aria-describedby="calendar-status"
+          />
+          <span id="calendar-status" class="file-status" data-loaded="false">No file loaded</span>
+        </div>
+
+        <div class="input-field">
+          <label for="assignments-input">Assignments CSV</label>
+          <input
+            type="file"
+            id="assignments-input"
+            accept=".csv,text/csv"
+            aria-describedby="assignments-status"
+          />
+          <span id="assignments-status" class="file-status" data-loaded="false">No file loaded</span>
+        </div>
+      </div>
+
+      <div class="sample-row">
+        <button type="button" id="load-sample-btn" class="btn btn-secondary">
+          Load sample data
+        </button>
+        <span class="sample-hint">Don’t have files handy? Try a built-in example.</span>
+      </div>
+    </section>
+
+    <!-- ============ Schema / format help ============ -->
+    <section class="panel help-panel" aria-labelledby="help-heading">
+      <details>
+        <summary id="help-heading">Expected CSV format</summary>
+        <div class="help-body">
+          <h3>Calendar CSV</h3>
+          <p>One row per initiative. Dates are ISO <code>YYYY-MM-DD</code>; the window is inclusive of both ends.</p>
+          <div class="code-sample">
+            <pre><code>initiative_id,name,start_date,end_date,segment_predicate
+summer_sale,Summer Sale,2026-07-01,2026-07-14,
+double_xp,Double XP Weekend,2026-07-10,2026-07-12,</code></pre>
+          </div>
+          <ul class="field-list">
+            <li><code>initiative_id</code> — unique id (string)</li>
+            <li><code>name</code> — human-readable label</li>
+            <li><code>start_date</code>, <code>end_date</code> — ISO dates, inclusive</li>
+            <li><code>segment_predicate</code> — optional, may be blank</li>
+          </ul>
+
+          <h3>Assignments CSV</h3>
+          <p>One row per player enrolled in an initiative. Duplicate (player, initiative) rows are de-duplicated.</p>
+          <div class="code-sample">
+            <pre><code>initiative_id,player_id
+summer_sale,player_001
+double_xp,player_001</code></pre>
+          </div>
+          <ul class="field-list">
+            <li><code>initiative_id</code> — must match a calendar initiative</li>
+            <li><code>player_id</code> — enrolled player id (string)</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ Threshold control ============ -->
+    <section class="panel threshold-panel" aria-labelledby="threshold-heading">
+      <h2 id="threshold-heading">2. Tune the threshold</h2>
+      <p class="threshold-help">
+        Only show conflicts where the smaller initiative shares at least this
+        fraction of its enrolled players with the other.
+      </p>
+      <div class="threshold-control">
+        <label for="threshold-slider">Overlap threshold</label>
+        <input
+          type="range"
+          id="threshold-slider"
+          min="0"
+          max="100"
+          step="1"
+          value="20"
+          aria-describedby="threshold-readout"
+        />
+        <output id="threshold-readout" for="threshold-slider">20%</output>
+      </div>
+    </section>
+
+    <!-- ============ Validation error banner ============ -->
+    <div
+      id="error-banner"
+      class="error-banner"
+      role="alert"
+      aria-live="assertive"
+      hidden
+    >
+      <div class="error-banner-content">
+        <strong class="error-banner-title">We couldn’t read that file</strong>
+        <ul id="error-list" class="error-list"></ul>
+      </div>
+      <button type="button" id="error-dismiss" class="error-dismiss" aria-label="Dismiss errors">&times;</button>
+    </div>
+
+    <!-- ============ Results ============ -->
+    <section class="panel results-panel" aria-labelledby="results-heading">
+      <h2 id="results-heading">Conflicts</h2>
+
+      <!-- Interim prompt: shown until both files are loaded -->
+      <div id="prompt-state" class="state-message prompt-state">
+        <p>Upload <strong>both</strong> a calendar and an assignments file (or load the sample) to check for conflicts.</p>
+      </div>
+
+      <!-- Empty state: both files loaded, no conflicts at current threshold -->
+      <div id="empty-state" class="state-message empty-state" hidden>
+        <p>No conflicts at or above the current threshold. 🎉</p>
+        <p class="empty-hint">Try lowering the threshold to surface weaker overlaps.</p>
+      </div>
+
+      <!-- Flag cards rendered here by js/app.js -->
+      <ul id="flag-list" class="flag-list" aria-live="polite"></ul>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>
+      Fully client-side. <a href="tests.html">Run the test suite</a>.
+    </p>
+  </footer>
+
+  <!-- App controller (ES module, relative path for GitHub Pages) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

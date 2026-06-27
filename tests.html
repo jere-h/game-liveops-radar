@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live-ops Deconfliction Checker — Test Runner</title>
+  <!-- CSV parsing is self-contained in js/core.js — no CDN dependency. -->
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0; padding: 1.5rem; line-height: 1.45;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+    .sub { color: #666; margin: 0 0 1rem; font-size: .9rem; }
+    #summary {
+      font-weight: 700; padding: .6rem .9rem; border-radius: 8px; margin: 0 0 1rem;
+      border: 1px solid transparent;
+    }
+    #summary.ok  { background: #e6f6ea; color: #155724; border-color: #b7e4c7; }
+    #summary.bad { background: #fdecec; color: #842029; border-color: #f5c2c7; }
+    #summary.run { background: #eef1f5; color: #333; border-color: #d8dee6; }
+    ul#results { list-style: none; margin: 0; padding: 0; }
+    li.case {
+      padding: .55rem .75rem; margin: .35rem 0; border-radius: 6px;
+      border: 1px solid #ddd; display: flex; flex-direction: column; gap: .15rem;
+    }
+    li.pass { background: #f3fbf5; border-color: #cdeccf; }
+    li.fail { background: #fdf3f3; border-color: #f0c9c9; }
+    .tag { font-weight: 700; font-variant: small-caps; letter-spacing: .03em; }
+    li.pass .tag { color: #1a7d34; }
+    li.fail .tag { color: #b02a2a; }
+    .name { font-weight: 600; }
+    .detail { color: #8a2b2b; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; white-space: pre-wrap; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Live-ops Deconfliction Checker — In-browser Tests</h1>
+  <p class="sub">Imports <code>js/core.js</code> + <code>js/sample-data.js</code> and asserts hand-computed expectations. No build step.</p>
+  <div id="summary" class="run">Running…</div>
+  <ul id="results"></ul>
+
+  <script type="module">
+    import * as core from './js/core.js';
+    import * as sample from './js/sample-data.js';
+
+    /* ----------------------------------------------------------------------
+     * Tiny assertion + harness layer
+     * -------------------------------------------------------------------- */
+    class AssertError extends Error {}
+    function assert(cond, msg) { if (!cond) throw new AssertError(msg || 'assertion failed'); }
+    function assertEq(actual, expected, msg) {
+      if (actual !== expected) {
+        throw new AssertError((msg ? msg + ': ' : '') + 'expected ' + JSON.stringify(expected) + ' but got ' + JSON.stringify(actual));
+      }
+    }
+    function assertApprox(actual, expected, eps, msg) {
+      eps = eps == null ? 1e-6 : eps;
+      if (typeof actual !== 'number' || Math.abs(actual - expected) > eps) {
+        throw new AssertError((msg ? msg + ': ' : '') + 'expected ~' + expected + ' (+/-' + eps + ') but got ' + JSON.stringify(actual));
+      }
+    }
+
+    /* ----------------------------------------------------------------------
+     * Resilient adapters over the core API (tolerate small naming variations
+     * while still exercising the documented contract).
+     * -------------------------------------------------------------------- */
+    function rowsOf(parseResult) {
+      if (parseResult == null) return [];
+      if (Array.isArray(parseResult)) return parseResult;
+      if (Array.isArray(parseResult.rows)) return parseResult.rows;
+      if (Array.isArray(parseResult.data)) return parseResult.data;
+      return [];
+    }
+    function errorsOf(parseResult) {
+      if (parseResult == null) return [];
+      if (Array.isArray(parseResult)) return [];
+      if (Array.isArray(parseResult.errors)) return parseResult.errors;
+      return [];
+    }
+    function parseCal(csv) { return core.parseCalendar(csv); }
+    function parseAsg(csv) { return core.parseAssignments(csv); }
+
+    // Compute conflicts from raw CSV text the way the app's parse->compute path does.
+    function conflictsFrom(calCsv, asgCsv) {
+      const cal = parseCal(calCsv);
+      const asg = parseAsg(asgCsv);
+      const calRows = rowsOf(cal);
+      const asgRows = rowsOf(asg);
+      return computeFrom(calRows, asgRows);
+    }
+    // computeConflicts may accept assignment rows directly, or a membership map
+    // built via buildMembership. Try the rows form first, fall back to membership.
+    function computeFrom(calRows, asgRows) {
+      let out;
+      try {
+        out = core.computeConflicts(calRows, asgRows);
+      } catch (e) {
+        out = undefined;
+      }
+      if (!Array.isArray(out) && typeof core.buildMembership === 'function') {
+        const membership = core.buildMembership(asgRows);
+        out = core.computeConflicts(calRows, membership);
+      }
+      assert(Array.isArray(out), 'computeConflicts should return an array');
+      return out;
+    }
+
+    function pairEnds(p) {
+      const a = p.initiative_a != null ? p.initiative_a : (p.a != null ? p.a : p.initiativeA);
+      const b = p.initiative_b != null ? p.initiative_b : (p.b != null ? p.b : p.initiativeB);
+      return [a, b];
+    }
+    function findPair(conflicts, x, y) {
+      return conflicts.find(p => {
+        const [a, b] = pairEnds(p);
+        return (a === x && b === y) || (a === y && b === x);
+      });
+    }
+    function shared(p)   { return p.shared_players != null ? p.shared_players : p.sharedPlayers; }
+    function fraction(p) { return p.overlap_fraction != null ? p.overlap_fraction : p.overlapFraction; }
+    function windowDays(p){ return p.overlap_window_days != null ? p.overlap_window_days : p.overlapWindowDays; }
+    function impactOf(p) { return p.impact != null ? p.impact : p.impact_band; }
+
+    function filterThr(conflicts, t) { return core.filterByThreshold(conflicts, t); }
+
+    /* ----------------------------------------------------------------------
+     * Shared CSV builders
+     * -------------------------------------------------------------------- */
+    const CAL_HEADER = 'initiative_id,start_date,end_date';
+    const ASG_HEADER = 'initiative_id,player_id';
+    function cal(rows) { return [CAL_HEADER].concat(rows).join('\n') + '\n'; }
+    function asg(rows) { return [ASG_HEADER].concat(rows).join('\n') + '\n'; }
+
+    /* ----------------------------------------------------------------------
+     * Test cases
+     * -------------------------------------------------------------------- */
+    const tests = [];
+    function test(name, fn) { tests.push({ name, fn }); }
+
+    // 1. shared_players, overlap_fraction, and inclusive overlap_window_days.
+    test('shared players, fraction, and overlap window are computed correctly', () => {
+      const c = cal([
+        'A,2026-01-01,2026-01-10',
+        'B,2026-01-05,2026-01-15'
+      ]);
+      const a = asg([
+        'A,p1', 'A,p2', 'A,p3',
+        'B,p2', 'B,p3', 'B,p4'
+      ]);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(p, 'expected an A/B conflict pair');
+      assertEq(shared(p), 2, 'shared players {p2,p3}');
+      // Overlap = Jan 5..Jan 10 inclusive = 6 days.
+      assertEq(windowDays(p), 6, 'inclusive overlap window');
+      // fraction = shared / min(|A|,|B|) = 2 / 3.
+      assertApprox(fraction(p), 2 / 3, 1e-6, 'overlap fraction');
+    });
+
+    // 2. A single-day overlap counts as 1 (inclusive).
+    test('one-day overlap yields overlap_window_days === 1', () => {
+      const c = cal([
+        'A,2026-02-01,2026-02-05',
+        'B,2026-02-05,2026-02-10'
+      ]);
+      const a = asg(['A,p1', 'A,p2', 'B,p1', 'B,p2']);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(p, 'expected an A/B conflict pair sharing Feb 5');
+      assertEq(windowDays(p), 1, 'single shared day is 1 inclusive day');
+    });
+
+    // 3. Non-overlapping initiatives produce no pair / no card.
+    test('non-overlapping initiatives produce no conflict pair', () => {
+      const c = cal([
+        'A,2026-03-01,2026-03-05',
+        'B,2026-03-06,2026-03-10'
+      ]);
+      const a = asg(['A,p1', 'A,p2', 'B,p1', 'B,p2']);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(!p, 'dates do not overlap (Mar 5 < Mar 6) so there must be no pair');
+    });
+
+    // 4. Identical membership => fraction 1.0 and High impact.
+    test('identical membership gives fraction 1.0 and High impact', () => {
+      const c = cal([
+        'A,2026-04-01,2026-04-10',
+        'B,2026-04-03,2026-04-12'
+      ]);
+      const a = asg([
+        'A,p1', 'A,p2', 'A,p3',
+        'B,p1', 'B,p2', 'B,p3'
+      ]);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(p, 'expected an A/B conflict pair');
+      assertApprox(fraction(p), 1.0, 1e-9, 'identical membership => 1.0');
+      assertEq(impactOf(p), 'High', 'full overlap is High impact');
+    });
+
+    // 5. Duplicate assignment rows are deduped (Set-based membership) => fraction <= 1.0.
+    test('duplicate assignment rows are deduped, keeping fraction <= 1.0', () => {
+      const c = cal([
+        'A,2026-05-01,2026-05-10',
+        'B,2026-05-02,2026-05-09'
+      ]);
+      // p1 appears many times for each initiative; membership must collapse to one.
+      const a = asg([
+        'A,p1', 'A,p1', 'A,p1', 'A,p2',
+        'B,p1', 'B,p1', 'B,p2'
+      ]);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(p, 'expected an A/B conflict pair');
+      assert(fraction(p) <= 1.0 + 1e-9, 'fraction must never exceed 1.0 with duplicate rows');
+      // distinct: A={p1,p2}, B={p1,p2} => shared 2, min 2 => 1.0
+      assertEq(shared(p), 2, 'deduped shared count');
+      assertApprox(fraction(p), 1.0, 1e-9, 'deduped fraction');
+    });
+
+    // 6. Calendar initiative with zero assignments => min-size 0 => skipped.
+    test('calendar initiative absent from assignments is skipped (min size 0)', () => {
+      const c = cal([
+        'A,2026-06-01,2026-06-20',
+        'C,2026-06-05,2026-06-15'   // C overlaps A in dates...
+      ]);
+      const a = asg(['A,p1', 'A,p2']); // ...but C has NO enrolled players.
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'C');
+      assert(!p, 'a pair touching an empty-membership initiative must be skipped');
+    });
+
+    // 7. Pairs are lexically ordered and self-pairs are excluded.
+    test('pairs are lexically ordered and no self-pairs appear', () => {
+      const c = cal([
+        'Beta,2026-07-01,2026-07-10',
+        'Alpha,2026-07-02,2026-07-09'
+      ]);
+      const a = asg(['Beta,p1', 'Beta,p2', 'Alpha,p1', 'Alpha,p2']);
+      const conflicts = conflictsFrom(c, a);
+      for (const p of conflicts) {
+        const [x, y] = pairEnds(p);
+        assert(x !== y, 'self-pair must never be produced');
+        assert(String(x) < String(y), 'pair endpoints must be lexically ordered: got ' + x + ',' + y);
+      }
+      const p = findPair(conflicts, 'Alpha', 'Beta');
+      assert(p, 'expected the Alpha/Beta pair');
+      assertEq(pairEnds(p)[0], 'Alpha', 'lower id first');
+      assertEq(pairEnds(p)[1], 'Beta', 'higher id second');
+    });
+
+    // 8. filterByThreshold is inclusive (>=) at the exact equality boundary.
+    test('threshold filter is inclusive (>=) at exact equality', () => {
+      const c = cal([
+        'A,2026-08-01,2026-08-10',
+        'B,2026-08-02,2026-08-09'
+      ]);
+      // A={p1,p2}, B={p1,p3,p4} => shared {p1}=1, min size 2 => fraction exactly 0.5.
+      const a = asg([
+        'A,p1', 'A,p2',
+        'B,p1', 'B,p3', 'B,p4'
+      ]);
+      const conflicts = conflictsFrom(c, a);
+      const p = findPair(conflicts, 'A', 'B');
+      assert(p, 'expected an A/B conflict pair');
+      assertApprox(fraction(p), 0.5, 1e-9, 'setup fraction is exactly 0.5');
+
+      const atBoundary = filterThr(conflicts, 0.5);
+      assert(findPair(atBoundary, 'A', 'B'), 'fraction == threshold must be kept (>=)');
+
+      const justAbove = filterThr(conflicts, 0.5 + 1e-6);
+      assert(!findPair(justAbove, 'A', 'B'), 'fraction below threshold must be dropped');
+    });
+
+    // 9. Malformed CSV returns ValidationErrors (never throws).
+    test('missing required column yields a validation error (no throw)', () => {
+      let res;
+      try {
+        res = parseCal('initiative_id,start_date\nA,2026-01-01\n'); // end_date column missing
+      } catch (e) {
+        throw new AssertError('parseCalendar must not throw on malformed input: ' + e.message);
+      }
+      const errs = errorsOf(res);
+      assert(errs.length > 0, 'expected at least one ValidationError for the missing end_date column');
+    });
+
+    test('non-ISO date yields a validation error (no throw)', () => {
+      let res;
+      try {
+        res = parseCal('initiative_id,start_date,end_date\nA,not-a-date,2026-01-10\n');
+      } catch (e) {
+        throw new AssertError('parseCalendar must not throw on a bad date: ' + e.message);
+      }
+      const errs = errorsOf(res);
+      assert(errs.length > 0, 'expected a ValidationError for the non-ISO start_date');
+      assert(typeof errs[0].message === 'string' && errs[0].message.length > 0, 'ValidationError carries a readable message');
+    });
+
+    test('malformed assignments CSV yields a validation error (no throw)', () => {
+      let res;
+      try {
+        res = parseAsg('initiative_id\nA\n'); // player_id column missing
+      } catch (e) {
+        throw new AssertError('parseAssignments must not throw on malformed input: ' + e.message);
+      }
+      const errs = errorsOf(res);
+      assert(errs.length > 0, 'expected a ValidationError for the missing player_id column');
+    });
+
+    // 10. Bundled sample data flows through the same parse->compute path cleanly.
+    test('bundled sample data parses without errors and yields conflicts', () => {
+      const calCsv = sample.calendarCsv != null ? sample.calendarCsv
+        : (sample.sampleCalendarCsv != null ? sample.sampleCalendarCsv
+          : (sample.CALENDAR_CSV != null ? sample.CALENDAR_CSV : sample.default && sample.default.calendarCsv));
+      const asgCsv = sample.assignmentsCsv != null ? sample.assignmentsCsv
+        : (sample.sampleAssignmentsCsv != null ? sample.sampleAssignmentsCsv
+          : (sample.ASSIGNMENTS_CSV != null ? sample.ASSIGNMENTS_CSV : sample.default && sample.default.assignmentsCsv));
+      assert(typeof calCsv === 'string' && calCsv.length > 0, 'sample calendar CSV string is exported');
+      assert(typeof asgCsv === 'string' && asgCsv.length > 0, 'sample assignments CSV string is exported');
+
+      const calRes = parseCal(calCsv);
+      const asgRes = parseAsg(asgCsv);
+      assertEq(errorsOf(calRes).length, 0, 'sample calendar parses clean');
+      assertEq(errorsOf(asgRes).length, 0, 'sample assignments parse clean');
+
+      const conflicts = computeFrom(rowsOf(calRes), rowsOf(asgRes));
+      assert(conflicts.length >= 1, 'sample data should surface at least one overlapping pair');
+    });
+
+    /* ----------------------------------------------------------------------
+     * Run + render
+     * -------------------------------------------------------------------- */
+    function run() {
+      const list = document.getElementById('results');
+      const summary = document.getElementById('summary');
+      let passed = 0, failed = 0;
+
+      for (const t of tests) {
+        const li = document.createElement('li');
+        li.className = 'case';
+        let ok = true, detail = '';
+        try {
+          t.fn();
+        } catch (e) {
+          ok = false;
+          detail = (e && e.message) ? e.message : String(e);
+          if (!(e instanceof AssertError) && e && e.stack) detail += '\n' + e.stack;
+        }
+        if (ok) { passed++; li.classList.add('pass'); } else { failed++; li.classList.add('fail'); }
+
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = ok ? 'PASS' : 'FAIL';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = ' ' + t.name;
+        const head = document.createElement('div');
+        head.appendChild(tag);
+        head.appendChild(name);
+        li.appendChild(head);
+
+        if (!ok) {
+          const d = document.createElement('div');
+          d.className = 'detail';
+          d.textContent = detail;
+          li.appendChild(d);
+        }
+        list.appendChild(li);
+      }
+
+      summary.classList.remove('run');
+      summary.classList.add(failed === 0 ? 'ok' : 'bad');
+      summary.textContent = (failed === 0 ? '\u2713 All ' : '\u2717 ')
+        + passed + ' passed, ' + failed + ' failed'
+        + ' (' + tests.length + ' total)';
+    }
+
+    run();
+  </script>
+</body>
+</html>
