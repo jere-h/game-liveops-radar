@@ -1,37 +1,54 @@
 // js/sample-data.js
 //
-// Bundled static fixtures for the "Load sample data" button.
+// Bundled static fixtures for the Live-ops Deconfliction Radar.
 //
 // These are exported as literal CSV text strings — exactly the kind of text a
-// user would upload from a file — so that clicking "Load sample data" feeds the
+// user would upload from a file — so the auto-loaded built-in dataset feeds the
 // identical parse -> validate -> compute -> render path that a real file upload
 // takes. Nothing here is pre-parsed: app.js hands these strings to the very same
 // core.js parseCalendar / parseAssignments functions used for uploads.
 //
-// Dataset shape (3 initiatives, 10 assignment rows):
+// =====================================================================
+// Dataset: a mid-core mobile/live-service game's July 2026 live-ops slate
+// =====================================================================
 //
-//   Calendar
-//   --------
-//   SUMMER_SALE   2026-07-01 .. 2026-07-10
-//   HERO_QUEST    2026-07-05 .. 2026-07-15   (overlaps SUMMER_SALE on Jul 5-10)
-//   GUILD_WARS    2026-07-20 .. 2026-07-25   (no date overlap with the others)
+//   Calendar (8 initiatives). Windows are deliberately staggered into two date
+//   clusters plus two isolated events so the date-overlap graph has EXACTLY the
+//   five intended edges (core emits a card for every date-overlapping pair where
+//   both sides have >=1 player, so non-intended pairs are kept date-disjoint).
+//   ----------------------------------------------------------------------------
+//   SUMMER_SALE    Summer Mega Sale          2026-07-01 .. 2026-07-05
+//   WHALE_VIP      Whale VIP Offer           2026-07-04 .. 2026-07-08
+//   DOUBLE_XP      Double XP Weekend         2026-07-08 .. 2026-07-10
+//   WINBACK        Lapsed-Player Winback     2026-07-11 .. 2026-07-13
+//   BATTLE_PASS_S7 Battle Pass S7            2026-07-12 .. 2026-07-15
+//   STORE_LAYOUT   Store Layout Experiment   2026-07-14 .. 2026-07-17
+//   NEWPLAYER_AB   New Player Funnel A/B     2026-07-16 .. 2026-07-20
+//   GUILD_WARS     Guild Wars Season         2026-07-25 .. 2026-07-31  (isolated)
 //
-//   Memberships (deduped to distinct players per initiative)
-//   -------------------------------------------------------
-//   SUMMER_SALE : P001, P002, P003, P004        -> size 4
-//   HERO_QUEST  : P003, P004, P005              -> size 3
-//   GUILD_WARS  : P006, P007, P008              -> size 3
+//   Date-overlap edges (and only these):
+//     SUMMER_SALE-WHALE_VIP, WHALE_VIP-DOUBLE_XP, WINBACK-BATTLE_PASS_S7,
+//     BATTLE_PASS_S7-STORE_LAYOUT, STORE_LAYOUT-NEWPLAYER_AB.
+//   GUILD_WARS overlaps nobody in time -> clean outer radar blip, no conflict.
 //
-// Expected single conflict pair (the only date-overlapping pair with players):
+//   Distinct membership sizes (after dedup)
+//   ---------------------------------------
+//   SUMMER_SALE     -> 12   WHALE_VIP      -> 6
+//   BATTLE_PASS_S7  -> 14   DOUBLE_XP      -> 9
+//   NEWPLAYER_AB    -> 8    STORE_LAYOUT   -> 10
+//   GUILD_WARS      -> 7    WINBACK        -> 6
 //
-//   (HERO_QUEST, SUMMER_SALE)
-//     shared_players       = 2          (P003, P004)
-//     min_membership_size  = 3          (HERO_QUEST is the smaller cohort)
-//     overlap_fraction     = 2 / 3 = 0.6666...
-//     overlap_window_days  = 6          (Jul 5,6,7,8,9,10 — inclusive)
+//   Engineered conflicts (the five date-overlapping pairs with shared players).
+//   Pair id is lexical "A_ID|B_ID". Impact: frac>=0.5 High, >=0.2 Medium, else Low.
+//   ------------------------------------------------------------------------------
+//   HIGH   : SUMMER_SALE|WHALE_VIP       shared 5 / min 6  = 0.83  (revenue cannibalization)
+//   HIGH   : DOUBLE_XP|WHALE_VIP         shared 4 / min 6  = 0.67  (whale attention split)
+//   MEDIUM : BATTLE_PASS_S7|STORE_LAYOUT shared 4 / min 10 = 0.40  (experiment contamination)
+//   MEDIUM : NEWPLAYER_AB|STORE_LAYOUT   shared 2 / min 8  = 0.25  (A/B contamination)
+//   LOW    : BATTLE_PASS_S7|WINBACK      shared 1 / min 6  = 0.167 (mild audience overlap)
 //
-//   GUILD_WARS overlaps neither initiative's date window, so it produces no
-//   flag card regardless of any shared players.
+//   Intentional duplicate row: (SUMMER_SALE,P001) appears twice to exercise
+//   buildMembership's Set-based dedup, as a messy real upload would.
 
 /**
  * Calendar CSV fixture.
@@ -46,9 +63,14 @@
  * @type {string}
  */
 export const SAMPLE_CALENDAR_CSV = `initiative_id,name,start_date,end_date,segment_predicate
-SUMMER_SALE,Summer Mega Sale,2026-07-01,2026-07-10,spenders_last_30d
-HERO_QUEST,Hero Quest Event,2026-07-05,2026-07-15,all_active
-GUILD_WARS,Guild Wars Season,2026-07-20,2026-07-25,
+SUMMER_SALE,Summer Mega Sale,2026-07-01,2026-07-05,spenders_last_30d
+WHALE_VIP,Whale VIP Offer,2026-07-04,2026-07-08,ltv_gt_500
+DOUBLE_XP,Double XP Weekend,2026-07-08,2026-07-10,
+WINBACK,Lapsed-Player Winback,2026-07-11,2026-07-13,dormant_gt_14d
+BATTLE_PASS_S7,Battle Pass S7,2026-07-12,2026-07-15,all_active
+STORE_LAYOUT,Store Layout Experiment,2026-07-14,2026-07-17,
+NEWPLAYER_AB,New Player Funnel A/B,2026-07-16,2026-07-20,install_lt_7d
+GUILD_WARS,Guild Wars Season,2026-07-25,2026-07-31,guild_member
 `;
 
 /**
@@ -58,29 +80,91 @@ GUILD_WARS,Guild Wars Season,2026-07-20,2026-07-25,
  *   initiative_id  - must reference an initiative_id present in the calendar
  *   player_id      - the enrolled player
  *
- * Note the intentional duplicate row (HERO_QUEST,P003 appears twice) so the
- * "Load sample data" path exercises buildMembership's Set-based dedup exactly as
- * a messy real upload would.
+ * Player pool P001..P040, reused across initiatives to engineer the overlaps
+ * documented in the header. Contains one intentional duplicate row
+ * (SUMMER_SALE,P001) so the load path exercises buildMembership's dedup.
  *
  * @type {string}
  */
 export const SAMPLE_ASSIGNMENTS_CSV = `initiative_id,player_id
 SUMMER_SALE,P001
+SUMMER_SALE,P001
 SUMMER_SALE,P002
 SUMMER_SALE,P003
 SUMMER_SALE,P004
-HERO_QUEST,P003
-HERO_QUEST,P003
-HERO_QUEST,P004
-HERO_QUEST,P005
-GUILD_WARS,P006
-GUILD_WARS,P007
-GUILD_WARS,P008
+SUMMER_SALE,P005
+SUMMER_SALE,P006
+SUMMER_SALE,P007
+SUMMER_SALE,P008
+SUMMER_SALE,P009
+SUMMER_SALE,P010
+SUMMER_SALE,P011
+SUMMER_SALE,P012
+WHALE_VIP,P001
+WHALE_VIP,P002
+WHALE_VIP,P003
+WHALE_VIP,P004
+WHALE_VIP,P005
+WHALE_VIP,P013
+BATTLE_PASS_S7,P001
+BATTLE_PASS_S7,P002
+BATTLE_PASS_S7,P003
+BATTLE_PASS_S7,P014
+BATTLE_PASS_S7,P015
+BATTLE_PASS_S7,P016
+BATTLE_PASS_S7,P017
+BATTLE_PASS_S7,P018
+BATTLE_PASS_S7,P019
+BATTLE_PASS_S7,P020
+BATTLE_PASS_S7,P021
+BATTLE_PASS_S7,P022
+BATTLE_PASS_S7,P038
+BATTLE_PASS_S7,P023
+DOUBLE_XP,P001
+DOUBLE_XP,P002
+DOUBLE_XP,P003
+DOUBLE_XP,P004
+DOUBLE_XP,P024
+DOUBLE_XP,P025
+DOUBLE_XP,P026
+DOUBLE_XP,P027
+DOUBLE_XP,P028
+NEWPLAYER_AB,P029
+NEWPLAYER_AB,P030
+NEWPLAYER_AB,P031
+NEWPLAYER_AB,P032
+NEWPLAYER_AB,P033
+NEWPLAYER_AB,P034
+NEWPLAYER_AB,P041
+NEWPLAYER_AB,P042
+STORE_LAYOUT,P014
+STORE_LAYOUT,P015
+STORE_LAYOUT,P016
+STORE_LAYOUT,P017
+STORE_LAYOUT,P035
+STORE_LAYOUT,P036
+STORE_LAYOUT,P037
+STORE_LAYOUT,P029
+STORE_LAYOUT,P030
+STORE_LAYOUT,P028
+GUILD_WARS,P039
+GUILD_WARS,P040
+GUILD_WARS,P024
+GUILD_WARS,P025
+GUILD_WARS,P026
+GUILD_WARS,P027
+GUILD_WARS,P028
+WINBACK,P038
+WINBACK,P040
+WINBACK,P031
+WINBACK,P032
+WINBACK,P033
+WINBACK,P034
 `;
 
 /**
  * Convenience grouping of both fixtures, mirroring the two file inputs.
- * @type {{ calendar: string, assignments: string }}
+ * @type {{ calendar: string, assignments: string, calendarCsv: string, assignmentsCsv: string }}
  */
 export const SAMPLE_DATA = {
   calendar: SAMPLE_CALENDAR_CSV,

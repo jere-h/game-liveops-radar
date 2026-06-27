@@ -578,3 +578,499 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
     transition: none !important;
   }
 }
+
+/* ===========================================================================
+ * v2 — Radar dashboard layout. Appended after the legacy rules so these win
+ * on equal specificity. Uses the palette custom properties defined in :root.
+ * Class names here match what index.html + js/app.js emit.
+ * ========================================================================= */
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.app-header,
+.app-main,
+.app-footer {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.app-header {
+  padding-top: 32px;
+  padding-bottom: 8px;
+}
+
+.app-header h1 {
+  font-size: 1.7rem;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.app-header .tagline {
+  color: var(--text-muted);
+  max-width: 70ch;
+  margin: 0;
+}
+
+.app-main {
+  padding-bottom: 56px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  margin: 16px 0;
+}
+
+.panel h2 {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+}
+
+/* ---------- Threshold ---------- */
+.threshold-row {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.threshold-copy {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+.threshold-copy h2 {
+  margin-bottom: 4px;
+}
+
+.threshold-help {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.threshold-control {
+  flex: 1 1 280px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.threshold-control label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.threshold-control input[type="range"] {
+  flex: 1 1 auto;
+  accent-color: var(--accent);
+  min-width: 120px;
+}
+
+#threshold-readout {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--accent-hover);
+  min-width: 3.2ch;
+  text-align: right;
+}
+
+/* ---------- Dashboard grid ---------- */
+.dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 880px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Radar ---------- */
+.radar-panel {
+  margin: 0;
+}
+
+.radar-stage {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.radar-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+}
+
+.radar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 14px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: none;
+}
+
+.legend-high .legend-dot { background: var(--high); }
+.legend-medium .legend-dot { background: var(--medium); }
+.legend-low .legend-dot { background: var(--low); }
+.legend-none .legend-dot { background: var(--text-muted); }
+
+/* ---------- Assessment ---------- */
+.assessment-panel {
+  margin: 0;
+}
+
+.assessment-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.assessment-titlebar h2 {
+  margin: 0;
+}
+
+.assessment-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--accent-hover);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: help;
+}
+
+.assessment-overall__headline {
+  font-size: 0.98rem;
+  margin: 0 0 6px;
+}
+
+.assessment-overall__summary {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 12px;
+}
+
+.assessment-overall__note {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.assessment-pairs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.assessment-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.assessment-item.impact-high { border-left-color: var(--high); }
+.assessment-item.impact-medium { border-left-color: var(--medium); }
+.assessment-item.impact-low { border-left-color: var(--low); }
+
+/* Transient highlight when a radar blip/link points here. */
+.assessment-item.is-flash {
+  animation: assess-flash 1.2s ease-out;
+}
+
+@keyframes assess-flash {
+  0%   { box-shadow: 0 0 0 2px var(--accent-hover), 0 0 14px 2px var(--accent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessment-item.is-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent-hover);
+  }
+}
+
+.assessment-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assessment-item__headline {
+  font-size: 0.96rem;
+  margin: 0;
+}
+
+.assessment-item__stats {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0 10px;
+}
+
+.assessment-group {
+  margin-top: 8px;
+}
+
+.assessment-group__title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 4px;
+  color: var(--text-muted);
+}
+
+.assessment-group--risks .assessment-group__title { color: var(--high); }
+.assessment-group--opportunities .assessment-group__title { color: var(--low); }
+
+.assessment-group__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assessment-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- Impact badges (BEM) ---------- */
+.impact-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.impact-badge--high { color: var(--high); background: var(--high-bg); border-color: var(--high); }
+.impact-badge--medium { color: var(--medium); background: var(--medium-bg); border-color: var(--medium); }
+.impact-badge--low { color: var(--low); background: var(--low-bg); border-color: var(--low); }
+
+/* ---------- Conflict detail cards ---------- */
+.flag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.flag-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.flag-card.impact-high { border-left-color: var(--high); }
+.flag-card.impact-medium { border-left-color: var(--medium); }
+.flag-card.impact-low { border-left-color: var(--low); }
+
+.flag-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.flag-card__title {
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.flag-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.metric__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric__label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 2px 0 0;
+}
+
+/* ---------- States ---------- */
+.state-message {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.empty-hint {
+  font-size: 0.84rem;
+}
+
+/* ---------- Inputs (advanced, collapsed) ---------- */
+.inputs-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.inputs-body {
+  margin-top: 14px;
+}
+
+.inputs-intro {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 560px) {
+  .input-grid { grid-template-columns: 1fr; }
+}
+
+.input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.input-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.file-status {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.file-status[data-loaded="true"] {
+  color: var(--low);
+}
+
+.sample-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.sample-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.btn {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+}
+
+.inputs-body h3 { font-size: 0.95rem; margin: 16px 0 6px; }
+.inputs-body h4 { font-size: 0.85rem; margin: 12px 0 4px; }
+
+.code-sample pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+.field-list {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding-left: 18px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}

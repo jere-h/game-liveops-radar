@@ -1,0 +1,239 @@
+/* radar.css — styling for the SVG radar-sweep renderer (js/radar.js).
+ *
+ * Class names used (assigned by radar.js):
+ *   .radar-svg                root <svg>
+ *   .radar-bg                 background group (rings/spokes/sweep, aria-hidden)
+ *   .radar-ring               concentric band ring  (+ --high/--medium/--low/--none)
+ *   .radar-ring-label         band text label
+ *   .radar-spoke              faint radial grid line
+ *   .radar-sweep              rotating sweep wedge (uses #radar-sweep-grad)
+ *   .radar-links              link group
+ *   .radar-link               chord/link path       (+ --high/--medium/--low)
+ *   .radar-blips              blip group
+ *   .radar-blip               one initiative group   (+ --high/--medium/--low/--none,
+ *                                                      .is-dimmed)
+ *   .radar-blip-dot           the blip circle
+ *   .radar-blip-ping          animated ping ring (non-dimmed only)
+ *   .radar-blip-label         initiative name text
+ *
+ * CSS custom properties introduced (fall back to styles.css palette if present):
+ *   --radar-ring-stroke, --radar-spoke, --radar-sweep,
+ *   --radar-label, --radar-blip-stroke,
+ *   --radar-high, --radar-medium, --radar-low, --radar-none,
+ *   --radar-focus, --radar-dim-opacity
+ */
+
+:root {
+  /* Reuse the app palette from styles.css where it exists. */
+  --radar-ring-stroke: var(--border, #2e3a47);
+  --radar-spoke: rgba(120, 140, 160, 0.12);
+  --radar-sweep: var(--accent, #4d9fff);
+  --radar-label: var(--text-muted, #9aa9b8);
+  --radar-blip-stroke: var(--bg, #0f1419);
+
+  --radar-high: var(--high, #e0573e);
+  --radar-medium: var(--medium, #d9a13b);
+  --radar-low: var(--low, #2f9e6f);
+  --radar-none: var(--text-muted, #9aa9b8);
+
+  --radar-focus: var(--accent-hover, #6cb0ff);
+  --radar-dim-opacity: 0.28;
+}
+
+.radar-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(77, 159, 255, 0.05),
+    transparent 70%
+  );
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+/* ---------- Background rings / grid ---------- */
+.radar-ring {
+  fill: none;
+  stroke: var(--radar-ring-stroke);
+  stroke-width: 1.25;
+}
+
+.radar-ring--high {
+  stroke: color-mix(in srgb, var(--radar-high) 45%, var(--radar-ring-stroke));
+}
+.radar-ring--medium {
+  stroke: color-mix(in srgb, var(--radar-medium) 30%, var(--radar-ring-stroke));
+}
+
+.radar-ring-label {
+  fill: var(--radar-label);
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.radar-spoke {
+  stroke: var(--radar-spoke);
+  stroke-width: 1;
+}
+
+/* ---------- Rotating sweep ---------- */
+.radar-sweep {
+  transform-origin: 500px 500px; /* CENTER of viewBox */
+  animation: radar-spin 8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes radar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Links ---------- */
+.radar-link {
+  stroke-linecap: round;
+  cursor: pointer;
+  transition: stroke-opacity 0.15s ease, stroke-width 0.15s ease;
+}
+.radar-link--high {
+  stroke: var(--radar-high);
+}
+.radar-link--medium {
+  stroke: var(--radar-medium);
+}
+.radar-link--low {
+  stroke: var(--radar-low);
+}
+
+.radar-link:hover,
+.radar-link:focus {
+  stroke-opacity: 1 !important;
+  outline: none;
+}
+.radar-link:focus-visible {
+  stroke: var(--radar-focus);
+  filter: drop-shadow(0 0 4px var(--radar-focus));
+}
+
+/* ---------- Blips ---------- */
+.radar-blip {
+  cursor: pointer;
+}
+.radar-blip-dot {
+  stroke: var(--radar-blip-stroke);
+  stroke-width: 2;
+  transition: filter 0.15s ease;
+}
+.radar-blip--high .radar-blip-dot {
+  fill: var(--radar-high);
+}
+.radar-blip--medium .radar-blip-dot {
+  fill: var(--radar-medium);
+}
+.radar-blip--low .radar-blip-dot {
+  fill: var(--radar-low);
+}
+.radar-blip--none .radar-blip-dot {
+  fill: var(--radar-none);
+}
+
+.radar-blip-label {
+  fill: var(--radar-label);
+  font-size: 16px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--radar-blip-stroke);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Ping ring pulse for active blips. */
+.radar-blip-ping {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radar-ping 2.6s ease-out infinite;
+  pointer-events: none;
+}
+.radar-blip--high .radar-blip-ping {
+  color: var(--radar-high);
+}
+.radar-blip--medium .radar-blip-ping {
+  color: var(--radar-medium);
+}
+.radar-blip--low .radar-blip-ping {
+  color: var(--radar-low);
+}
+.radar-blip--none .radar-blip-ping {
+  color: var(--radar-none);
+}
+
+@keyframes radar-ping {
+  0% {
+    transform: scale(1);
+    stroke-opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.4);
+    stroke-opacity: 0;
+  }
+}
+
+/* De-emphasize initiatives whose every link is hidden. */
+.radar-blip.is-dimmed {
+  opacity: var(--radar-dim-opacity);
+}
+
+/* ---------- Hover / focus highlight ---------- */
+.radar-blip:hover .radar-blip-dot,
+.radar-blip:focus .radar-blip-dot {
+  filter: drop-shadow(0 0 6px currentColor);
+  outline: none;
+}
+.radar-blip--high:hover .radar-blip-dot,
+.radar-blip--high:focus .radar-blip-dot {
+  color: var(--radar-high);
+}
+.radar-blip--medium:hover .radar-blip-dot,
+.radar-blip--medium:focus .radar-blip-dot {
+  color: var(--radar-medium);
+}
+.radar-blip--low:hover .radar-blip-dot,
+.radar-blip--low:focus .radar-blip-dot {
+  color: var(--radar-low);
+}
+.radar-blip--none:hover .radar-blip-dot,
+.radar-blip--none:focus .radar-blip-dot {
+  color: var(--radar-none);
+}
+
+.radar-blip:focus-visible {
+  outline: none;
+}
+.radar-blip:focus-visible .radar-blip-dot {
+  stroke: var(--radar-focus);
+  stroke-width: 3;
+}
+
+/* ---------- Reduced-motion guard ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep,
+  .radar-blip-ping {
+    animation: none !important;
+  }
+  .radar-sweep {
+    opacity: 0.35; /* keep a static beam for the aesthetic */
+  }
+  .radar-blip-ping {
+    display: none;
+  }
+}

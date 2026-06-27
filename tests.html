@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Live-ops Deconfliction Checker — Test Runner</title>
+  <title>Live-ops Deconfliction Radar — Test Runner</title>
+  <link rel="icon" href="data:," />
   <!-- CSV parsing is self-contained in js/core.js — no CDN dependency. -->
   <style>
     :root { color-scheme: light dark; }
@@ -36,14 +37,15 @@
   </style>
 </head>
 <body>
-  <h1>Live-ops Deconfliction Checker — In-browser Tests</h1>
-  <p class="sub">Imports <code>js/core.js</code> + <code>js/sample-data.js</code> and asserts hand-computed expectations. No build step.</p>
+  <h1>Live-ops Deconfliction Radar — In-browser Tests</h1>
+  <p class="sub">Imports <code>js/core.js</code>, <code>js/sample-data.js</code> + <code>js/assessment.js</code> and asserts hand-computed expectations. No build step.</p>
   <div id="summary" class="run">Running…</div>
   <ul id="results"></ul>
 
   <script type="module">
     import * as core from './js/core.js';
     import * as sample from './js/sample-data.js';
+    import { ASSESSMENT } from './js/assessment.js';
 
     /* ----------------------------------------------------------------------
      * Tiny assertion + harness layer
@@ -328,6 +330,58 @@
 
       const conflicts = computeFrom(rowsOf(calRes), rowsOf(asgRes));
       assert(conflicts.length >= 1, 'sample data should surface at least one overlapping pair');
+    });
+
+    /* ----------------------------------------------------------------------
+     * Radar/assessment integration contract (v2)
+     * -------------------------------------------------------------------- */
+    function sampleConflicts() {
+      const calCsv = sample.calendarCsv || (sample.default && sample.default.calendarCsv);
+      const asgCsv = sample.assignmentsCsv || (sample.default && sample.default.assignmentsCsv);
+      return computeFrom(rowsOf(parseCal(calCsv)), rowsOf(parseAsg(asgCsv)));
+    }
+
+    // 13. Every computed sample conflict has a matching pre-computed assessment
+    //     entry with non-empty risks + opportunities (no missing narratives).
+    test('every sample conflict has a pre-computed assessment entry', () => {
+      const conflicts = sampleConflicts();
+      assert(conflicts.length >= 1, 'sample should produce conflicts');
+      assert(ASSESSMENT && ASSESSMENT.pairs, 'ASSESSMENT.pairs is exported');
+      for (const c of conflicts) {
+        const entry = ASSESSMENT.pairs[c.id];
+        assert(entry, 'missing assessment entry for conflict id ' + c.id);
+        assert(Array.isArray(entry.risks) && entry.risks.length > 0, 'risks for ' + c.id);
+        assert(Array.isArray(entry.opportunities) && entry.opportunities.length > 0, 'opportunities for ' + c.id);
+        assert(typeof entry.headline === 'string' && entry.headline.length > 0, 'headline for ' + c.id);
+      }
+    });
+
+    // 14. No orphan assessment keys: every pairs key maps to a real conflict id,
+    //     and the overall summary exists.
+    test('assessment has no orphan pairs and carries an overall summary', () => {
+      const ids = new Set(sampleConflicts().map(c => c.id));
+      for (const key of Object.keys(ASSESSMENT.pairs)) {
+        assert(ids.has(key), 'orphan assessment key with no matching conflict: ' + key);
+      }
+      assert(ASSESSMENT.overall && typeof ASSESSMENT.overall.summary === 'string'
+        && ASSESSMENT.overall.summary.length > 0, 'overall.summary present');
+    });
+
+    // 15. Sample spans all three impact bands AND includes a zero-conflict
+    //     initiative (so the radar always has a clean "None" blip to show).
+    test('sample spans all impact bands and has a zero-conflict initiative', () => {
+      const calCsv = sample.calendarCsv || (sample.default && sample.default.calendarCsv);
+      const calRows = rowsOf(parseCal(calCsv));
+      const conflicts = sampleConflicts();
+      const bands = new Set(conflicts.map(c => impactOf(c)));
+      assert(bands.has('High'), 'expected at least one High-impact conflict');
+      assert(bands.has('Medium'), 'expected at least one Medium-impact conflict');
+      assert(bands.has('Low'), 'expected at least one Low-impact conflict');
+      const inConflict = new Set();
+      for (const c of conflicts) { const [a, b] = pairEnds(c); inConflict.add(a); inConflict.add(b); }
+      const allIds = calRows.map(r => r.initiative_id);
+      const clean = allIds.filter(id => !inConflict.has(id));
+      assert(clean.length >= 1, 'expected >=1 initiative with no conflict (a clean radar blip)');
     });
 
     /* ----------------------------------------------------------------------
